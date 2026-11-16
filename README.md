@@ -9,8 +9,8 @@ with Workspaces whose template has an SSH Connect URL:
 
 | Environment (`--env`, host prefix) | Run:ai tenant | Template |
 |---|---|---|
-| `drai-test` (default) | drai-test, ai-gpu-test | `exp-ws-ssh-shell` in project `exp-ws-ssh` (ai-gpu-deployment `experiment/ws-ssh`) |
-| `pais-dev` | auckland, ASI dev; reachable only on the ASI network | `ubuntu-shell-testing` (pais-deploy-dev, `services/runai-control-plane/templates/auckland/`) |
+| `drai-test` | drai-test, ai-gpu-test | `exp-ws-ssh-shell` in project `exp-ws-ssh` (ai-gpu-deployment `experiment/ws-ssh`) |
+| `pais-dev` (default) | auckland, ASI dev; reachable only on the ASI network | `ubuntu-shell-testing` (pais-deploy-dev, `services/runai-control-plane/templates/auckland/`) |
 
 ```
 ssh drai-test.cs-ssh3
@@ -54,11 +54,11 @@ the same targets on every push to `main` and every pull request.
 ## Use
 
 ```sh
-pais-ssh setup                   # drai-test: sign in (browser), make ~/.ssh/pais-ssh_ed25519, write its ~/.ssh/config block
-ssh drai-test.<workspace>
-pais-ssh setup --env pais-dev    # the same for ASI dev
+pais-ssh setup                   # pais-dev: sign in (browser), make ~/.ssh/pais-ssh_ed25519, write its ~/.ssh/config block
 ssh pais-dev.<workspace>
-pais-ssh list --env pais-dev     # your Workspaces with SSH there
+pais-ssh list                    # your Workspaces with SSH there
+pais-ssh setup --env drai-test   # the same for drai-test
+ssh drai-test.<workspace>
 ```
 
 - Each environment has its own sign-in and its own block in `~/.ssh/config`; the key is shared.
@@ -85,7 +85,9 @@ there ("Permission denied (publickey)").
 - Sign-in: authorisation code flow with PKCE against the tenant's realm in Run:ai's Keycloak, with Run:ai's public
   client `runai-cli` (the one kubelogin uses). Its ID token is accepted by the Run:ai API and by the sidecar. Keycloak allows
   `http://localhost:<any port>` as the redirect for this client, not `http://127.0.0.1`.
-- Login name: the token's `preferred_username` without the domain, the same as `id -un` in the Workspace.
+- Login name: `setup` asks one of your running Workspaces (`<SSH URL>/user`, which the start-up fills with `id -un`),
+  because sshd accepts only that name and the token may not carry it (on pais-dev its only name is the email). With no
+  running Workspace, or one whose template doesn't serve it, the token's `preferred_username` without the domain.
 - Workspaces: `GET /api/v1/workloads?filterBy=type==Workspace,submittedBy==<email>[,name==<workspace>]`, keeping those
   with a connection named `SSH...`.
 - The key never leaves the computer. ssh has to offer one; sshd in the Workspace accepts any for the owner, because the

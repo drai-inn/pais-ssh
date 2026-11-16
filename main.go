@@ -37,7 +37,7 @@ var envs = []env{
 // clientID is Run:ai's public CLI client, present in every tenant realm.
 const clientID = "runai-cli"
 
-const defaultEnv = "drai-test"
+const defaultEnv = "pais-dev"
 
 func findEnv(name string) (env, error) {
 	var names []string
@@ -62,7 +62,7 @@ const usage = `pais-ssh: ssh, scp, rsync and VS Code Remote-SSH to your Run:ai W
   pais-ssh logout [--env E]                  forget the stored sign-in
   pais-ssh version                           this build's version
 
---env is drai-test (the default) or pais-dev. Then:
+--env is pais-dev (the default) or drai-test. Then:
   ssh <env>.<workspace>
   ssh <env>.<workspace>.<project>   when the name is in more than one project
 
@@ -82,7 +82,7 @@ func main() {
 
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
-	envName := fs.String("env", defaultEnv, "environment: drai-test or pais-dev")
+	envName := fs.String("env", defaultEnv, "environment: pais-dev or drai-test")
 	noBrowser := fs.Bool("no-browser", false, "print the sign-in URL instead of opening a browser")
 	fs.Parse(args)
 

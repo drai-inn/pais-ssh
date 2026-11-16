@@ -18,11 +18,13 @@ type workload struct {
 	ProjectName  string `json:"projectName"`
 	Phase        string `json:"phase"`
 	Environments []struct {
-		Connections []struct {
-			Name string `json:"name"`
-			URL  string `json:"url"`
-		} `json:"connections"`
+		Connections []connection `json:"connections"`
 	} `json:"environments"`
+}
+
+type connection struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
 // sshURL is the URL of the Workspace's connection named "SSH..." (the template names it "SSH (client only)").

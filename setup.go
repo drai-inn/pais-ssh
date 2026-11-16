@@ -6,10 +6,14 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -54,13 +58,50 @@ func setup(e env, noBrowser bool) error {
 		return err
 	}
 	cfg := filepath.Join(dir, "config")
-	if err := writeBlock(e, cfg, block(e, exe, c.username(), hostNames(e, ws))); err != nil {
+	user := workspaceUser(tok, ws)
+	if user == "" {
+		user = c.username()
+		fmt.Printf("No running Workspace told its login name; using %q from your sign-in. Start one and run setup again if ssh says \"Permission denied\".\n", user)
+	}
+	if err := writeBlock(e, cfg, block(e, exe, user, hostNames(e, ws))); err != nil {
 		return err
 	}
 
 	fmt.Printf("Wrote the %s block in %s.\n", e.name, cfg)
 	printWorkspaces(e, ws)
 	return nil
+}
+
+var loginName = regexp.MustCompile(`^[a-z_][a-z0-9._-]*$`)
+
+// workspaceUser asks your running Workspaces for their login name (`id -un`), which sshd requires and which the
+// start-up serves at <SSH URL>/user through the same owner-only sidecar. The sign-in token can't give it: on some
+// tenants its only name is the email. "" when no Workspace answers.
+func workspaceUser(tok string, ws []workload) string {
+	client := &http.Client{
+		Timeout:       20 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	for _, w := range ws {
+		if w.Phase != "Running" {
+			continue
+		}
+		req, err := http.NewRequest(http.MethodGet, strings.TrimSuffix(w.sshURL(), "/")+"/user", nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		resp.Body.Close()
+		if name := strings.TrimSpace(string(b)); resp.StatusCode == http.StatusOK && loginName.MatchString(name) {
+			return name
+		}
+	}
+	return ""
 }
 
 // ensureKey makes the key the first time. It never leaves this machine: sshd in the Workspace accepts any key from

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,5 +53,35 @@ func TestWriteBlockKeepsOtherEnvironments(t *testing.T) {
 	}
 	if strings.Contains(got, "drai-test.a") {
 		t.Errorf("old drai-test block left behind:\n%s", got)
+	}
+}
+
+func TestWorkspaceUser(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Header.Get("Authorization") != "Bearer tok":
+			http.Error(w, "no", http.StatusForbidden)
+		case r.URL.Path == "/p/new/url-templt-4/user":
+			fmt.Fprintln(w, "csco212")
+		default:
+			http.Error(w, "websocket expected", http.StatusBadRequest) // websocat without the /user page
+		}
+	}))
+	defer srv.Close()
+	ws := func(name, phase string) workload {
+		w := workload{Name: name, Phase: phase}
+		w.Environments = append(w.Environments, struct {
+			Connections []connection `json:"connections"`
+		}{[]connection{{"SSH (client only)", srv.URL + "/p/" + name + "/url-templt-4"}}})
+		return w
+	}
+	if got := workspaceUser("tok", []workload{ws("old", "Running"), ws("new", "Stopped")}); got != "" {
+		t.Errorf("no running Workspace with /user: got %q", got)
+	}
+	if got := workspaceUser("tok", []workload{ws("old", "Running"), ws("new", "Running")}); got != "csco212" {
+		t.Errorf("got %q, want csco212", got)
+	}
+	if got := workspaceUser("bad", []workload{ws("new", "Running")}); got != "" {
+		t.Errorf("refused token: got %q", got)
 	}
 }
