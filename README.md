@@ -1,12 +1,16 @@
 # pais-ssh
 
-One program that gives plain OpenSSH (`ssh`, `scp`, `sftp`, `rsync`, VS Code Remote-SSH) to your own Run:ai Workspaces
-on drai-test. Besides it, your computer needs only OpenSSH, which comes with Linux, macOS and Windows 10 and later.
+One program that gives plain OpenSSH (`ssh`, `scp`, `sftp`, `rsync`, VS Code Remote-SSH) to your own Run:ai Workspaces.
+Besides it, your computer needs only OpenSSH, which comes with Linux, macOS and Windows 10 and later.
 No administrator rights.
 
-**Experimental.** Part of the experiment `ws-ssh` (branch `experiment/ws-ssh` of drai-inn/ai-gpu-deployment, which holds
-the Workspace side: the template and `scripts/ssh-init.sh`). Works only with Workspaces from the template
-`exp-ws-ssh-shell` in the Run:ai project `exp-ws-ssh` on drai-test.
+**Experimental.** From the experiment `ws-ssh` (branch `experiment/ws-ssh` of drai-inn/ai-gpu-deployment). Works only
+with Workspaces whose template has an SSH Connect URL:
+
+| Environment (`--env`, host prefix) | Run:ai tenant | Template |
+|---|---|---|
+| `drai-test` (default) | drai-test, ai-gpu-test | `exp-ws-ssh-shell` in project `exp-ws-ssh` (ai-gpu-deployment `experiment/ws-ssh`) |
+| `pais-dev` | auckland, ASI dev; reachable only on the ASI network | `ubuntu-shell-testing` (pais-deploy-dev, `services/runai-control-plane/templates/auckland/`) |
 
 ```
 ssh drai-test.cs-ssh3
@@ -50,32 +54,36 @@ the same targets on every push to `main` and every pull request.
 ## Use
 
 ```sh
-pais-ssh setup      # sign in (browser), make ~/.ssh/pais-ssh_ed25519, write the drai-test block in ~/.ssh/config
+pais-ssh setup                   # drai-test: sign in (browser), make ~/.ssh/pais-ssh_ed25519, write its ~/.ssh/config block
 ssh drai-test.<workspace>
-pais-ssh list       # your Workspaces with SSH
+pais-ssh setup --env pais-dev    # the same for ASI dev
+ssh pais-dev.<workspace>
+pais-ssh list --env pais-dev     # your Workspaces with SSH there
 ```
 
-- `setup` writes one wildcard entry, `Host drai-test.*`, so new Workspaces need no new set-up. It also names your
+- Each environment has its own sign-in and its own block in `~/.ssh/config`; the key is shared.
+- `setup` writes one wildcard entry per environment, for example `Host drai-test.*`, so new Workspaces need no new
+  set-up. It also names your
   current Workspaces on a `Host` line so that VS Code's Remote Explorer lists them; run `setup` again to refresh that.
   It replaces only its own block, at the top of the file, including a block written earlier by the experiment's
   `client/config-ssh`.
-- A name in more than one of your projects: `ssh drai-test.<workspace>.<project>`.
+- A name in more than one of your projects: `ssh <env>.<workspace>.<project>`.
 - A stopped Workspace is started and waited for (up to 5 minutes), and left running.
-- The sign-in is stored in the user config directory (`~/.config/pais-ssh/session.json` on Linux) and refreshed when
-  needed. When it can't be refreshed, ssh fails with "run `pais-ssh login`".
+- The sign-in is stored in the user config directory (`~/.config/pais-ssh/<env>.json` on Linux) and refreshed when
+  needed, until the Keycloak session ends (about a day on drai-test). Then ssh fails with "run `pais-ssh login --env
+  <env>`".
 - Signing in on a machine without a browser: `pais-ssh login --no-browser` prints the URL. The browser must reach
   `http://localhost:8000` on that machine (or 18000 when 8000 is taken):
   `ssh -L 8000:127.0.0.1:8000 -L 18000:127.0.0.1:18000 <machine>`.
-- `pais-ssh logout` deletes the stored sign-in. The key and the `~/.ssh/config` block stay.
+- `pais-ssh logout --env <env>` deletes that environment's stored sign-in. The key and the `~/.ssh/config` block stay.
 
-**Workspaces:** only those from the template `exp-ws-ssh-shell` in project `exp-ws-ssh` have the SSH URL, and only
-those started since 2026-11-17 (the template on pais-base v3 with the current `scripts/ssh-init.sh`) accept any key. Older ones check
-`~/.ssh/authorized_keys`, so pais-ssh's key is refused there ("Permission denied (publickey)").
+**drai-test Workspaces** started before 2026-11-17 check `~/.ssh/authorized_keys`, so pais-ssh's key is refused
+there ("Permission denied (publickey)").
 
 ## How it decides
 
-- Sign-in: authorisation code flow with PKCE against the `drai-test` realm, with Run:ai's public client `runai-cli` (the
-  one kubelogin uses). Its ID token is accepted by the Run:ai API and by the sidecar. Keycloak allows
+- Sign-in: authorisation code flow with PKCE against the tenant's realm in Run:ai's Keycloak, with Run:ai's public
+  client `runai-cli` (the one kubelogin uses). Its ID token is accepted by the Run:ai API and by the sidecar. Keycloak allows
   `http://localhost:<any port>` as the redirect for this client, not `http://127.0.0.1`.
 - Login name: the token's `preferred_username` without the domain, the same as `id -un` in the Workspace.
 - Workspaces: `GET /api/v1/workloads?filterBy=type==Workspace,submittedBy==<email>[,name==<workspace>]`, keeping those

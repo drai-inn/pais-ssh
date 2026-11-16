@@ -39,7 +39,7 @@ func (w workload) sshURL() string {
 
 // workspaces lists the Workspaces you submitted that have an SSH connection, all of them or those named name.
 // Stopped Workspaces keep their connections, so they are listed too.
-func workspaces(tok, email, name string) ([]workload, error) {
+func workspaces(e env, tok, email, name string) ([]workload, error) {
 	// In filterBy, a comma means AND.
 	f := "type==Workspace,submittedBy==" + email
 	if name != "" {
@@ -49,7 +49,7 @@ func workspaces(tok, email, name string) ([]workload, error) {
 	var out struct {
 		Workloads []workload `json:"workloads"`
 	}
-	if err := call(tok, http.MethodGet, "/api/v1/workloads?"+q.Encode(), &out); err != nil {
+	if err := call(e, tok, http.MethodGet, "/api/v1/workloads?"+q.Encode(), &out); err != nil {
 		return nil, err
 	}
 	var ws []workload
@@ -61,12 +61,12 @@ func workspaces(tok, email, name string) ([]workload, error) {
 	return ws, nil
 }
 
-func resume(tok, id string) error {
-	return call(tok, http.MethodPost, "/api/v1/workloads/workspaces/"+id+"/resume", nil)
+func resume(e env, tok, id string) error {
+	return call(e, tok, http.MethodPost, "/api/v1/workloads/workspaces/"+id+"/resume", nil)
 }
 
-func call(tok, method, path string, out any) error {
-	req, err := http.NewRequest(method, apiBase+path, nil)
+func call(e env, tok, method, path string, out any) error {
+	req, err := http.NewRequest(method, e.apiBase+path, nil)
 	if err != nil {
 		return err
 	}

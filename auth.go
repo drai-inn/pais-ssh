@@ -18,16 +18,18 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// The sign-in uses Run:ai's own public Keycloak client, the one kubelogin uses, so the ID token it gives is accepted
+// oauthConfig uses Run:ai's own public Keycloak client, the one kubelogin uses, so the ID token it gives is accepted
 // by both the Run:ai API and the Workspace's oauth2-proxy sidecar.
-var oauthConfig = &oauth2.Config{
-	ClientID: clientID,
-	Endpoint: oauth2.Endpoint{
-		AuthURL:   issuer + "/protocol/openid-connect/auth",
-		TokenURL:  issuer + "/protocol/openid-connect/token",
-		AuthStyle: oauth2.AuthStyleInParams,
-	},
-	Scopes: []string{"openid", "email"},
+func (e env) oauthConfig() *oauth2.Config {
+	return &oauth2.Config{
+		ClientID: clientID,
+		Endpoint: oauth2.Endpoint{
+			AuthURL:   e.issuer + "/protocol/openid-connect/auth",
+			TokenURL:  e.issuer + "/protocol/openid-connect/token",
+			AuthStyle: oauth2.AuthStyleInParams,
+		},
+		Scopes: []string{"openid", "email"},
+	}
 }
 
 // loginPorts are kubelogin's, so the same `ssh -L` forward serves both. Keycloak accepts http://localhost on any
@@ -51,16 +53,17 @@ func (c claims) username() string {
 	return u
 }
 
-func sessionPath() (string, error) {
+// sessionPath is one file per environment.
+func sessionPath(e env) (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "pais-ssh", "session.json"), nil
+	return filepath.Join(dir, "pais-ssh", e.name+".json"), nil
 }
 
-func loadSession() (*session, error) {
-	p, err := sessionPath()
+func loadSession(e env) (*session, error) {
+	p, err := sessionPath(e)
 	if err != nil {
 		return nil, err
 	}
@@ -73,8 +76,8 @@ func loadSession() (*session, error) {
 }
 
 // saveSession replaces the file in one rename, since VS Code runs several proxies at once and each may refresh.
-func saveSession(s *session) error {
-	p, err := sessionPath()
+func saveSession(e env, s *session) error {
+	p, err := sessionPath(e)
 	if err != nil {
 		return err
 	}
@@ -100,8 +103,8 @@ func saveSession(s *session) error {
 	return os.Rename(f.Name(), p)
 }
 
-func logout() error {
-	p, err := sessionPath()
+func logout(e env) error {
+	p, err := sessionPath(e)
 	if err != nil {
 		return err
 	}
@@ -126,9 +129,9 @@ func parseClaims(jwt string) (claims, error) {
 
 // token returns a current ID token, refreshing it when it has less than a minute left. It never opens a browser:
 // as a ProxyCommand it runs under ssh or VS Code, where nobody would see the prompt.
-func token() (string, claims, error) {
-	notSignedIn := errors.New("not signed in, or the sign-in has expired: run `pais-ssh login`")
-	s, err := loadSession()
+func token(e env) (string, claims, error) {
+	notSignedIn := fmt.Errorf("not signed in to %s, or the sign-in has expired: run `pais-ssh login --env %s`", e.name, e.name)
+	s, err := loadSession(e)
 	if err != nil {
 		return "", claims{}, notSignedIn
 	}
@@ -137,7 +140,7 @@ func token() (string, claims, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	tok, err := oauthConfig.TokenSource(ctx, &oauth2.Token{RefreshToken: s.RefreshToken}).Token()
+	tok, err := e.oauthConfig().TokenSource(ctx, &oauth2.Token{RefreshToken: s.RefreshToken}).Token()
 	if err != nil {
 		return "", claims{}, notSignedIn
 	}
@@ -145,7 +148,7 @@ func token() (string, claims, error) {
 	if err != nil {
 		return "", claims{}, err
 	}
-	if err := saveSession(s); err != nil {
+	if err := saveSession(e, s); err != nil {
 		return "", claims{}, err
 	}
 	c, err := parseClaims(s.IDToken)
@@ -161,10 +164,10 @@ func sessionFrom(tok *oauth2.Token) (*session, error) {
 }
 
 // login runs the authorisation code flow with PKCE, receiving the code on http://localhost:8000 (or 18000).
-func login(noBrowser bool) (claims, error) {
+func login(e env, noBrowser bool) (claims, error) {
 	var ln net.Listener
 	var err error
-	conf := *oauthConfig
+	conf := e.oauthConfig()
 	for _, port := range loginPorts {
 		if ln, err = net.Listen("tcp", "127.0.0.1:"+port); err == nil {
 			conf.RedirectURL = "http://localhost:" + port
@@ -231,14 +234,14 @@ func login(noBrowser bool) (claims, error) {
 	if err != nil {
 		return claims{}, err
 	}
-	if err := saveSession(s); err != nil {
+	if err := saveSession(e, s); err != nil {
 		return claims{}, err
 	}
 	c, err := parseClaims(s.IDToken)
 	if err != nil {
 		return claims{}, err
 	}
-	fmt.Fprintf(os.Stderr, "Signed in as %s.\n", c.Email)
+	fmt.Fprintf(os.Stderr, "Signed in to %s as %s.\n", e.name, c.Email)
 	return c, nil
 }
 

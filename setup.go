@@ -16,23 +16,24 @@ import (
 
 const keyName = "pais-ssh_ed25519"
 
-var (
-	blockBegin = "# --- " + prefix + ": written by pais-ssh setup, edits here are replaced ---"
-	blockEnd   = "# --- " + prefix + " end ---"
-)
+// The markers of an environment's block in ~/.ssh/config.
+func (e env) blockBegin() string {
+	return "# --- " + e.name + ": written by pais-ssh setup, edits here are replaced ---"
+}
+func (e env) blockEnd() string { return "# --- " + e.name + " end ---" }
 
 // setup signs in if needed, makes the key and writes the managed block in ~/.ssh/config.
-func setup(noBrowser bool) error {
-	tok, c, err := token()
+func setup(e env, noBrowser bool) error {
+	tok, c, err := token(e)
 	if err != nil {
-		if _, err := login(noBrowser); err != nil {
+		if _, err := login(e, noBrowser); err != nil {
 			return err
 		}
-		if tok, c, err = token(); err != nil {
+		if tok, c, err = token(e); err != nil {
 			return err
 		}
 	}
-	ws, err := workspaces(tok, c.Email, "")
+	ws, err := workspaces(e, tok, c.Email, "")
 	if err != nil {
 		return err
 	}
@@ -53,12 +54,12 @@ func setup(noBrowser bool) error {
 		return err
 	}
 	cfg := filepath.Join(dir, "config")
-	if err := writeBlock(cfg, block(exe, c.username(), hostNames(ws))); err != nil {
+	if err := writeBlock(e, cfg, block(e, exe, c.username(), hostNames(e, ws))); err != nil {
 		return err
 	}
 
-	fmt.Printf("Wrote %s.\n", cfg)
-	printWorkspaces(ws)
+	fmt.Printf("Wrote the %s block in %s.\n", e.name, cfg)
+	printWorkspaces(e, ws)
 	return nil
 }
 
@@ -87,15 +88,15 @@ func ensureKey(path, comment string) error {
 	return os.WriteFile(path+".pub", []byte(line), 0o644)
 }
 
-// hostNames gives prefix.<workspace>, or prefix.<workspace>.<project> for names in more than one project.
-func hostNames(ws []workload) []string {
+// hostNames gives <env>.<workspace>, or <env>.<workspace>.<project> for names in more than one project.
+func hostNames(e env, ws []workload) []string {
 	count := map[string]int{}
 	for _, w := range ws {
 		count[w.Name]++
 	}
 	var names []string
 	for _, w := range ws {
-		n := prefix + "." + w.Name
+		n := e.name + "." + w.Name
 		if count[w.Name] > 1 {
 			n += "." + w.ProjectName
 		}
@@ -107,16 +108,16 @@ func hostNames(ws []workload) []string {
 
 // block is the managed part of ~/.ssh/config. The wildcard entry reaches any Workspace, including ones made later;
 // the line naming each current Workspace is only there so VS Code's Remote Explorer can list them.
-func block(exe, user string, hosts []string) string {
+func block(e env, exe, user string, hosts []string) string {
 	if strings.ContainsAny(exe, " \t") {
 		exe = `"` + exe + `"`
 	}
 	var b strings.Builder
-	b.WriteString(blockBegin + "\n")
+	b.WriteString(e.blockBegin() + "\n")
 	if len(hosts) > 0 {
 		b.WriteString("Host " + strings.Join(hosts, " ") + "\n")
 	}
-	b.WriteString("Host " + prefix + ".*\n")
+	b.WriteString("Host " + e.name + ".*\n")
 	b.WriteString("  User " + user + "\n")
 	b.WriteString("  ProxyCommand " + exe + " proxy %n\n")
 	b.WriteString("  IdentityFile ~/.ssh/" + keyName + "\n")
@@ -125,15 +126,15 @@ func block(exe, user string, hosts []string) string {
 	b.WriteString("  StrictHostKeyChecking no\n")
 	b.WriteString("  UserKnownHostsFile /dev/null\n")
 	b.WriteString("  LogLevel ERROR\n")
-	// hub-gateway closes connections idle for 60 s.
+	// The gateways close connections idle for 60 s.
 	b.WriteString("  ServerAliveInterval 30\n")
-	b.WriteString(blockEnd + "\n")
+	b.WriteString(e.blockEnd() + "\n")
 	return b.String()
 }
 
 // writeBlock puts the block at the top of the file, where ssh reads it before any other "Host *" settings, replacing
-// any earlier block for this prefix (including one written by config-ssh).
-func writeBlock(path, blk string) error {
+// any earlier block for this environment (including one written by config-ssh). Other environments' blocks stay.
+func writeBlock(e env, path, blk string) error {
 	old, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -142,42 +143,42 @@ func writeBlock(path, blk string) error {
 	skip := false
 	for _, line := range strings.SplitAfter(string(old), "\n") {
 		trimmed := strings.TrimRight(line, "\r\n")
-		if strings.HasPrefix(trimmed, "# --- "+prefix+": ") {
+		if strings.HasPrefix(trimmed, "# --- "+e.name+": ") {
 			skip = true
 		}
 		if !skip && line != "" {
 			rest = append(rest, line)
 		}
-		if trimmed == blockEnd {
+		if trimmed == e.blockEnd() {
 			skip = false
 		}
 	}
 	return os.WriteFile(path, []byte(blk+"\n"+strings.TrimLeft(strings.Join(rest, ""), "\r\n")), 0o600)
 }
 
-func list() error {
-	tok, c, err := token()
+func list(e env) error {
+	tok, c, err := token(e)
 	if err != nil {
 		return err
 	}
-	ws, err := workspaces(tok, c.Email, "")
+	ws, err := workspaces(e, tok, c.Email, "")
 	if err != nil {
 		return err
 	}
-	printWorkspaces(ws)
+	printWorkspaces(e, ws)
 	return nil
 }
 
-func printWorkspaces(ws []workload) {
+func printWorkspaces(e env, ws []workload) {
 	if len(ws) == 0 {
 		fmt.Println("None of your Workspaces has SSH. Make one from a template with an SSH connection.")
 		return
 	}
-	names := hostNames(ws)
+	names := hostNames(e, ws)
 	byName := map[string]workload{}
 	for _, w := range ws {
-		byName[prefix+"."+w.Name] = w
-		byName[prefix+"."+w.Name+"."+w.ProjectName] = w
+		byName[e.name+"."+w.Name] = w
+		byName[e.name+"."+w.Name+"."+w.ProjectName] = w
 	}
 	for _, n := range names {
 		w := byName[n]

@@ -18,18 +18,18 @@ import (
 // stdin and stdout belong to ssh, so messages go to stderr only.
 func proxy(args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: pais-ssh proxy " + prefix + ".<workspace>[.<project>]")
+		return errors.New("usage: pais-ssh proxy <env>.<workspace>[.<project>]")
 	}
-	name, project, err := parseHost(args[0])
+	e, name, project, err := parseHost(args[0])
 	if err != nil {
 		return err
 	}
-	tok, c, err := token()
+	tok, c, err := token(e)
 	if err != nil {
 		return err
 	}
 
-	all, err := workspaces(tok, c.Email, name)
+	all, err := workspaces(e, tok, c.Email, name)
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func proxy(args []string) error {
 	case 1:
 	default:
 		return fmt.Errorf("you have a Workspace %q in more than one project (%s): use %s.%s.<project>",
-			name, strings.Join(projects, ", "), prefix, name)
+			name, strings.Join(projects, ", "), e.name, name)
 	}
 	w := ws[0]
 	u := w.sshURL()
@@ -55,7 +55,7 @@ func proxy(args []string) error {
 	if w.Phase != "Running" {
 		if w.Phase == "Stopped" {
 			log.Printf("starting %s...", name)
-			if err := resume(tok, w.ID); err != nil {
+			if err := resume(e, tok, w.ID); err != nil {
 				return err
 			}
 		} else {
@@ -69,14 +69,17 @@ func proxy(args []string) error {
 	return pipe(tok, u)
 }
 
-// parseHost splits "<prefix>.<workspace>[.<project>]". Run:ai names are DNS labels, so they contain no dots.
-func parseHost(host string) (name, project string, err error) {
-	rest, ok := strings.CutPrefix(host, prefix+".")
+// parseHost splits "<env>.<workspace>[.<project>]". Environment and Run:ai names contain no dots.
+func parseHost(host string) (e env, name, project string, err error) {
+	envName, rest, ok := strings.Cut(host, ".")
 	if !ok || rest == "" {
-		return "", "", fmt.Errorf("%q isn't %s.<workspace>[.<project>]", host, prefix)
+		return env{}, "", "", fmt.Errorf("%q isn't <env>.<workspace>[.<project>]", host)
+	}
+	if e, err = findEnv(envName); err != nil {
+		return env{}, "", "", err
 	}
 	name, project, _ = strings.Cut(rest, ".")
-	return name, project, nil
+	return e, name, project, nil
 }
 
 // waitReady polls the SSH URL until websocat answers a plain GET: 200 (the help page) or 400 (templates without it).
