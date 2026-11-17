@@ -12,6 +12,9 @@ with Workspaces whose template has an SSH Connect URL:
 | `drai-test` | drai-test, ai-gpu-test | `exp-ws-ssh-shell` in project `exp-ws-ssh` (ai-gpu-deployment `experiment/ws-ssh`) |
 | `pais-dev` (default) | auckland, ASI dev; reachable only on the ASI network | `ubuntu-shell-testing` (pais-deploy-dev, `services/runai-control-plane/templates/auckland/`) |
 
+Run:ai copies the template into a Workspace when it is created, so a template change (such as a new SSH Connect URL)
+reaches only Workspaces created after it. Stopping and starting a Workspace keeps its old spec: make a new one.
+
 ```
 ssh drai-test.cs-ssh3
   -> ProxyCommand: pais-ssh proxy drai-test.cs-ssh3
