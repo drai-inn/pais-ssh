@@ -1,0 +1,130 @@
+name: install
+# Tests install.sh and install.ps1 against archives built from this commit, served by a local web server laid out like
+# GitHub Releases (releases/latest/download/, releases/download/<tag>/), so it needs no release and no public repo.
+on:
+  push:
+    branches: [main]
+    paths: [install.sh, install.ps1, .goreleaser.yaml, .github/workflows/install.yml]
+  pull_request:
+    paths: [install.sh, install.ps1, .goreleaser.yaml, .github/workflows/install.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archives:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
+      - uses: actions/upload-artifact@v7
+        with:
+          name: archives
+          retention-days: 1
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+
+  unix:
+    needs: archives
+    strategy:
+      fail-fast: false
+      matrix:
+        # /bin/sh is dash on Ubuntu and bash (POSIX mode) on macOS; macos-latest is Apple silicon.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: archives
+          path: srv/releases/latest/download
+      - name: Serve the archives and the script
+        run: |
+          mkdir -p srv/releases/download
+          cp -R srv/releases/latest/download srv/releases/download/v9.9.9
+          sed 's#https://github.com/drai-inn/pais-ssh#http://127.0.0.1:8080#' install.sh > srv/install.sh
+          test "$(grep -c 'http://127.0.0.1:8080' srv/install.sh)" = 1
+          python3 -m http.server -b 127.0.0.1 -d srv 8080 >/dev/null 2>&1 &
+          sleep 2
+      - name: Latest, as curl | sh
+        run: |
+          curl -fsSL http://127.0.0.1:8080/install.sh | sh
+          ~/.local/bin/pais-ssh version
+      - name: Not quarantined
+        if: runner.os == 'macOS'
+        run: |
+          if xattr -p com.apple.quarantine ~/.local/bin/pais-ssh; then exit 1; fi
+      - name: Upgrade in place to a pinned tag
+        run: curl -fsSL http://127.0.0.1:8080/install.sh | sh -s -- v9.9.9 | grep -F 'Installed pais-ssh'
+      - name: A missing tag fails
+        run: |
+          if curl -fsSL http://127.0.0.1:8080/install.sh | sh -s -- v0.0.0; then exit 1; fi
+      - name: A bad checksum fails and keeps the installed binary
+        run: |
+          sed -i.bak 's/^[0-9a-f]/x/' srv/releases/latest/download/checksums.txt
+          if curl -fsSL http://127.0.0.1:8080/install.sh | sh; then exit 1; fi
+          ~/.local/bin/pais-ssh version
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck -s sh install.sh
+
+  windows:
+    needs: archives
+    runs-on: windows-latest
+    defaults:
+      run:
+        # Windows PowerShell 5.1, which every Windows has; pwsh 7 is optional.
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: archives
+          path: srv/releases/latest/download
+      - name: Serve the archives and the script
+        run: |
+          New-Item -ItemType Directory srv/releases/download | Out-Null
+          Copy-Item -Recurse srv/releases/latest/download srv/releases/download/v9.9.9
+          $s = (Get-Content -Raw install.ps1).Replace('https://github.com/drai-inn/pais-ssh', 'http://127.0.0.1:8080')
+          if (([regex]::Matches($s, '127\.0\.0\.1:8080')).Count -ne 1) { throw 'repo URL not replaced once' }
+          Set-Content -NoNewline srv/install.ps1 $s
+          Start-Process python -ArgumentList '-m', 'http.server', '-b', '127.0.0.1', '-d', 'srv', '8080' -WindowStyle Hidden
+          Start-Sleep 3
+      - name: Latest, as irm | iex
+        run: |
+          irm http://127.0.0.1:8080/install.ps1 | iex
+          $exe = "$env:LOCALAPPDATA\Programs\pais-ssh\pais-ssh.exe"
+          & $exe version
+          if ($LASTEXITCODE) { throw 'pais-ssh version failed' }
+          if (Get-Item $exe -Stream Zone.Identifier -ErrorAction SilentlyContinue) { throw 'marked as downloaded from the internet' }
+          if (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -notcontains (Split-Path $exe)) { throw 'not on the user PATH' }
+          if (Get-Variable archive -ErrorAction SilentlyContinue) { throw 'install.ps1 left variables in the session' }
+      - name: Upgrade in place to a pinned tag
+        run: |
+          & ([scriptblock]::Create((irm http://127.0.0.1:8080/install.ps1))) v9.9.9
+          & "$env:LOCALAPPDATA\Programs\pais-ssh\pais-ssh.exe" version
+          if ($LASTEXITCODE) { throw 'pais-ssh version failed' }
+      - name: A missing tag fails
+        run: |
+          try { & ([scriptblock]::Create((irm http://127.0.0.1:8080/install.ps1))) v0.0.0 } catch { Write-Host "Failed as expected: $_"; exit 0 }
+          throw 'expected a failure'
+      - name: A bad checksum fails and keeps the installed binary
+        run: |
+          $c = 'srv/releases/latest/download/checksums.txt'
+          (Get-Content $c) -replace '^[0-9a-f]', 'x' | Set-Content $c
+          $failed = $false
+          try { irm http://127.0.0.1:8080/install.ps1 | iex } catch { Write-Host "Failed as expected: $_"; $failed = $true }
+          if (-not $failed) { throw 'expected a failure' }
+          & "$env:LOCALAPPDATA\Programs\pais-ssh\pais-ssh.exe" version
+          if ($LASTEXITCODE) { throw 'pais-ssh version failed' }

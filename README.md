@@ -27,10 +27,33 @@ ssh drai-test.cs-ssh3
 
 ## Install
 
-Download the archive for your system from [Releases](https://github.com/drai-inn/pais-ssh/releases/latest)
-(`pais-ssh_<os>_<arch>`: `linux`, `darwin` for macOS, `windows`; `amd64`, or `arm64` for Apple silicon), check it
-against `checksums.txt`, and put `pais-ssh` in a folder on your `PATH`, where it will stay: `setup` writes its full path
-into `~/.ssh/config`. With the GitHub CLI, for example on an Apple silicon Mac:
+Linux and macOS, once this repository is public:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/drai-inn/pais-ssh/main/install.sh | sh
+```
+
+`install.sh` downloads the newest release for your system, checks it against `checksums.txt` and puts it in
+`~/.local/bin`, telling you if that folder is not on your `PATH`. Run it again to upgrade, or add a tag to install that
+release (`| sh -s -- v0.2.2`).
+
+Windows (PowerShell), once this repository is public:
+
+```powershell
+irm https://raw.githubusercontent.com/drai-inn/pais-ssh/main/install.ps1 | iex
+```
+
+`install.ps1` does the same into `%LOCALAPPDATA%\Programs\pais-ssh` and adds that folder to your user `PATH`; open a new
+terminal afterwards. For a given release:
+`& ([scriptblock]::Create((irm https://raw.githubusercontent.com/drai-inn/pais-ssh/main/install.ps1))) v0.2.2`.
+
+The `install` workflow tests both scripts on Linux, macOS and Windows against archives built from the commit.
+
+By hand (and while the repository is private): download the archive for your system from
+[Releases](https://github.com/drai-inn/pais-ssh/releases/latest) (`pais-ssh_<os>_<arch>`: `linux`, `darwin` for macOS,
+`windows`; `amd64`, or `arm64` for Apple silicon), check it against `checksums.txt`, and put `pais-ssh` in a folder on
+your `PATH`, where it will stay: `setup` writes its full path into `~/.ssh/config`. With the GitHub CLI, for example on
+an Apple silicon Mac:
 
 ```sh
 gh release download -R drai-inn/pais-ssh -p 'pais-ssh_darwin_arm64.tar.gz' -p checksums.txt
@@ -39,7 +62,7 @@ tar -xzf pais-ssh_darwin_arm64.tar.gz pais-ssh && mkdir -p ~/.local/bin && mv pa
 ```
 
 The binaries are not signed. macOS blocks a binary downloaded with a browser until you run
-`xattr -d com.apple.quarantine ~/.local/bin/pais-ssh`; one fetched with `gh` or `curl` isn't marked. Windows may show a
+`xattr -d com.apple.quarantine ~/.local/bin/pais-ssh`; one fetched with `gh`, `curl` or `install.sh` isn't marked. Windows may show a
 SmartScreen warning.
 
 `pais-ssh version` shows which release you have.
