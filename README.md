@@ -9,7 +9,7 @@ Works only with Workspaces whose template has an SSH Connect URL:
 | Environment (`--env`, host prefix) | Run:ai tenant | Template |
 |---|---|---|
 | `drai-test` | drai-test, ai-gpu-test | `exp-ws-ssh-shell` in project `exp-ws-ssh` |
-| `pais-dev` (default) | auckland, the PAIS dev environment (VPN only) | `ubuntu-shell-testing` |
+| `pais-dev` (default) | auckland, the PAIS dev environment (VPN only) | `ubuntu-workspace` |
 
 Run:ai copies the template into a Workspace when it is created, so a template change (such as a new SSH Connect URL)
 reaches only Workspaces created after it. Stopping and starting a Workspace keeps its old spec: make a new one.
@@ -106,7 +106,8 @@ The template's job, not pais-ssh's:
   which must accept a bearer token from the tenant's Keycloak.
 - On that port, on localhost only: a WebSocket-to-TCP bridge (websocat) that starts `sshd -i` for each connection, as
   the Workspace's user, with `AuthorizedKeysCommand` accepting any key and `AllowUsers` set to that user.
-- `<SSH URL>/user` answering with the login name (`id -un`), for `setup`.
+- `<SSH URL>/user` answering with the login name (`id -un`), for `setup`, and for finding the SSH URL among
+  connections that have lost their names. Such a Workspace's URL paths end in `url-<n>`, not `url-templt-<n>`.
 
 ## How it decides
 
@@ -117,7 +118,9 @@ The template's job, not pais-ssh's:
   the token may not carry it (on pais-dev its only name is the email). With no running Workspace, or one whose
   template doesn't serve it, the token's `preferred_username` without the domain.
 - Workspaces: `GET /api/v1/workloads?filterBy=type==Workspace,submittedBy==<email>[,name==<workspace>]`, keeping those
-  with a connection named `SSH...`.
+  with a connection named `SSH...`. A Workspace whose template was edited in the Run:ai UI's advanced setup (for
+  example to request a GPU) has every connection named `templt-<n>` instead (Run:ai 3.0.20); its SSH URL is then the
+  one whose `/user` answers.
 - The key never leaves the computer. ssh has to offer one; sshd in the Workspace accepts any for the owner, because the
   sidecar has already checked the token.
 - Host keys are not recorded (`StrictHostKeyChecking no`): the Workspace makes a new one each start, and TLS to the
