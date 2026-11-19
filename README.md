@@ -8,25 +8,25 @@ Works only with Workspaces whose template has an SSH Connect URL:
 
 | Environment (`--env`, host prefix) | Run:ai tenant | Template |
 |---|---|---|
-| `drai-test` | drai-test, ai-gpu-test | `exp-ws-ssh-shell` in project `exp-ws-ssh` (ai-gpu-deployment `experiment/ws-ssh`) |
-| `pais-dev` (default) | auckland, the PAIS dev environment (VPN only) | `ubuntu-shell-testing` (pais-deploy-dev, `services/runai-control-plane/templates/auckland/`) |
+| `drai-test` | drai-test, ai-gpu-test | `exp-ws-ssh-shell` in project `exp-ws-ssh` |
+| `pais-dev` (default) | auckland, the PAIS dev environment (VPN only) | `ubuntu-shell-testing` |
 
 Run:ai copies the template into a Workspace when it is created, so a template change (such as a new SSH Connect URL)
 reaches only Workspaces created after it. Stopping and starting a Workspace keeps its old spec: make a new one.
 
 ```
-ssh drai-test.my-workspace
-  -> ProxyCommand: pais-ssh proxy drai-test.my-workspace
+ssh pais-dev.my-workspace
+  -> ProxyCommand: pais-ssh proxy pais-dev.my-workspace
        sign-in token (refreshed from the stored sign-in)
        Run:ai API: find the Workspace's SSH URL; resume it if stopped
        WebSocket to the SSH URL, Authorization: Bearer <token>
-  -> hub-gateway -> Run:ai route -> oauth2-proxy sidecar (owner only)
-  -> websocat on localhost:4192 -> sshd -i (as the owner, any key, owner's username only)
+  -> cluster gateway -> Run:ai route -> oauth2-proxy sidecar (owner only)
+  -> websocat on localhost -> sshd -i (as the owner, any key, owner's username only)
 ```
 
 ## Install
 
-Linux and macOS, once this repository is public:
+Linux and macOS:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/drai-inn/pais-ssh/main/install.sh | sh
@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/drai-inn/pais-ssh/main/install.sh |
 `~/.local/bin`, telling you if that folder is not on your `PATH`. Run it again to upgrade, or add a tag to install that
 release (`| sh -s -- v0.2.2`).
 
-Windows (PowerShell), once this repository is public:
+Windows (PowerShell):
 
 ```powershell
 irm https://raw.githubusercontent.com/drai-inn/pais-ssh/main/install.ps1 | iex
@@ -46,23 +46,21 @@ irm https://raw.githubusercontent.com/drai-inn/pais-ssh/main/install.ps1 | iex
 terminal afterwards. For a given release:
 `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/drai-inn/pais-ssh/main/install.ps1))) v0.2.2`.
 
-The `install` workflow tests both scripts on Linux, macOS and Windows against archives built from the commit.
-
-By hand (and while the repository is private): download the archive for your system from
-[Releases](https://github.com/drai-inn/pais-ssh/releases/latest) (`pais-ssh_<os>_<arch>`: `linux`, `darwin` for macOS,
-`windows`; `amd64`, or `arm64` for Apple silicon), check it against `checksums.txt`, and put `pais-ssh` in a folder on
-your `PATH`, where it will stay: `setup` writes its full path into `~/.ssh/config`. With the GitHub CLI, for example on
-an Apple silicon Mac:
+By hand: download the archive for your system from [Releases](https://github.com/drai-inn/pais-ssh/releases/latest)
+(`pais-ssh_<os>_<arch>`: `linux`, `darwin` for macOS, `windows`; `amd64`, or `arm64` for Apple silicon), check it
+against `checksums.txt`, and put `pais-ssh` in a folder on your `PATH`, where it will stay: `setup` writes its full path
+into `~/.ssh/config`. For example on an Apple silicon Mac:
 
 ```sh
-gh release download -R drai-inn/pais-ssh -p 'pais-ssh_darwin_arm64.tar.gz' -p checksums.txt
+curl -fsSLO https://github.com/drai-inn/pais-ssh/releases/latest/download/pais-ssh_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/drai-inn/pais-ssh/releases/latest/download/checksums.txt
 shasum -a 256 --ignore-missing -c checksums.txt
 tar -xzf pais-ssh_darwin_arm64.tar.gz pais-ssh && mkdir -p ~/.local/bin && mv pais-ssh ~/.local/bin/
 ```
 
 The binaries are not signed. macOS blocks a binary downloaded with a browser until you run
-`xattr -d com.apple.quarantine ~/.local/bin/pais-ssh`; one fetched with `gh`, `curl` or `install.sh` isn't marked. Windows may show a
-SmartScreen warning.
+`xattr -d com.apple.quarantine ~/.local/bin/pais-ssh`; one fetched with `curl` or the install scripts isn't marked.
+Windows may show a SmartScreen warning for a browser download.
 
 `pais-ssh version` shows which release you have.
 
@@ -74,7 +72,8 @@ Go 1.26 or later: `go build -o pais-ssh .`
 
 Push a tag `v<major>.<minor>.<patch>`. The `release` workflow builds Linux, macOS and Windows for amd64 and arm64 with
 GoReleaser (`.goreleaser.yaml`) and publishes them, with `checksums.txt`, as a GitHub Release. The `ci` workflow builds
-the same targets on every push to `main` and every pull request.
+the same targets on every push to `main` and every pull request. The `install` workflow tests both install scripts on
+Linux, macOS and Windows against archives built from the commit.
 
 ## Use
 
@@ -88,28 +87,35 @@ ssh drai-test.<workspace>
 
 - Each environment has its own sign-in and its own block in `~/.ssh/config`; the key is shared.
 - `setup` writes one wildcard entry per environment, for example `Host drai-test.*`, so new Workspaces need no new
-  set-up. It also names your
-  current Workspaces on a `Host` line so that VS Code's Remote Explorer lists them; run `setup` again to refresh that.
-  It replaces only its own block, at the top of the file, including a block written earlier by the experiment's
-  `client/config-ssh`.
+  set-up. It also names your current Workspaces on a `Host` line so that VS Code's Remote Explorer lists them; run
+  `setup` again to refresh that. It replaces only its own block, at the top of the file.
 - A name in more than one of your projects: `ssh <env>.<workspace>.<project>`.
 - A stopped Workspace is started and waited for (up to 5 minutes), and left running.
 - The sign-in is stored in the user config directory (`~/.config/pais-ssh/<env>.json` on Linux) and refreshed when
-  needed, until the Keycloak session ends (about a day on drai-test). Then ssh fails with "run `pais-ssh login --env
-  <env>`".
+  needed, until the Keycloak session ends (about a day). Then ssh fails with "run `pais-ssh login --env <env>`".
 - Signing in on a machine without a browser: `pais-ssh login --no-browser` prints the URL. The browser must reach
   `http://localhost:8000` on that machine (or 18000 when 8000 is taken):
   `ssh -L 8000:127.0.0.1:8000 -L 18000:127.0.0.1:18000 <machine>`.
 - `pais-ssh logout --env <env>` deletes that environment's stored sign-in. The key and the `~/.ssh/config` block stay.
 
+## What a Workspace needs
+
+The template's job, not pais-ssh's:
+
+- A Connect URL (`exposedUrls` entry) whose name starts with `SSH`, behind Run:ai's owner-only oauth2-proxy sidecar,
+  which must accept a bearer token from the tenant's Keycloak.
+- On that port, on localhost only: a WebSocket-to-TCP bridge (websocat) that starts `sshd -i` for each connection, as
+  the Workspace's user, with `AuthorizedKeysCommand` accepting any key and `AllowUsers` set to that user.
+- `<SSH URL>/user` answering with the login name (`id -un`), for `setup`.
+
 ## How it decides
 
 - Sign-in: authorisation code flow with PKCE against the tenant's realm in Run:ai's Keycloak, with Run:ai's public
-  client `runai-cli` (the one kubelogin uses). Its ID token is accepted by the Run:ai API and by the sidecar. Keycloak allows
-  `http://localhost:<any port>` as the redirect for this client, not `http://127.0.0.1`.
-- Login name: `setup` asks one of your running Workspaces (`<SSH URL>/user`, which the start-up fills with `id -un`),
-  because sshd accepts only that name and the token may not carry it (on pais-dev its only name is the email). With no
-  running Workspace, or one whose template doesn't serve it, the token's `preferred_username` without the domain.
+  client `runai-cli` (the one kubelogin uses). Its ID token is accepted by the Run:ai API and by the sidecar. Keycloak
+  allows `http://localhost:<any port>` as the redirect for this client, not `http://127.0.0.1`.
+- Login name: `setup` asks one of your running Workspaces (`<SSH URL>/user`), because sshd accepts only that name and
+  the token may not carry it (on pais-dev its only name is the email). With no running Workspace, or one whose
+  template doesn't serve it, the token's `preferred_username` without the domain.
 - Workspaces: `GET /api/v1/workloads?filterBy=type==Workspace,submittedBy==<email>[,name==<workspace>]`, keeping those
   with a connection named `SSH...`.
 - The key never leaves the computer. ssh has to offer one; sshd in the Workspace accepts any for the owner, because the
@@ -122,7 +128,7 @@ ssh drai-test.<workspace>
 
 ## Tested
 
-2026-11-17, Linux, built from source, against two Workspaces on drai-test (sshd settings applied by hand on one):
+2026-11-17, Linux, built from source, against two Workspaces on drai-test:
 
 | | Result |
 |---|---|
@@ -134,8 +140,9 @@ ssh drai-test.<workspace>
 | Unknown Workspace, wrong project, Workspace without SSH | clear error, ssh exits 255 |
 | Sign-in request (redirect to localhost:18000, PKCE S256) | Keycloak shows its login form |
 
-Not tested: the browser sign-in to the end, macOS, Windows, VS Code Remote-SSH, another person's token refused on
-someone else's Workspace.
+Since then also used on pais-dev from Linux (ssh, 0.36 s per connection). The install scripts are tested in CI on
+Linux, macOS and Windows; pais-ssh itself is not yet tested on macOS or Windows, nor with VS Code Remote-SSH or with
+another person's token refused on someone else's Workspace.
 
 ## Licence
 
