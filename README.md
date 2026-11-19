@@ -4,20 +4,19 @@ One program that gives plain OpenSSH (`ssh`, `scp`, `sftp`, `rsync`, VS Code Rem
 Besides it, your computer needs only OpenSSH, which comes with Linux, macOS and Windows 10 and later.
 No administrator rights.
 
-**Experimental.** From the experiment `ws-ssh` (branch `experiment/ws-ssh` of drai-inn/ai-gpu-deployment). Works only
-with Workspaces whose template has an SSH Connect URL:
+Works only with Workspaces whose template has an SSH Connect URL:
 
 | Environment (`--env`, host prefix) | Run:ai tenant | Template |
 |---|---|---|
 | `drai-test` | drai-test, ai-gpu-test | `exp-ws-ssh-shell` in project `exp-ws-ssh` (ai-gpu-deployment `experiment/ws-ssh`) |
-| `pais-dev` (default) | auckland, ASI dev; reachable only on the ASI network | `ubuntu-shell-testing` (pais-deploy-dev, `services/runai-control-plane/templates/auckland/`) |
+| `pais-dev` (default) | auckland, the PAIS dev environment (VPN only) | `ubuntu-shell-testing` (pais-deploy-dev, `services/runai-control-plane/templates/auckland/`) |
 
 Run:ai copies the template into a Workspace when it is created, so a template change (such as a new SSH Connect URL)
 reaches only Workspaces created after it. Stopping and starting a Workspace keeps its old spec: make a new one.
 
 ```
-ssh drai-test.cs-ssh3
-  -> ProxyCommand: pais-ssh proxy drai-test.cs-ssh3
+ssh drai-test.my-workspace
+  -> ProxyCommand: pais-ssh proxy drai-test.my-workspace
        sign-in token (refreshed from the stored sign-in)
        Run:ai API: find the Workspace's SSH URL; resume it if stopped
        WebSocket to the SSH URL, Authorization: Bearer <token>
@@ -103,9 +102,6 @@ ssh drai-test.<workspace>
   `ssh -L 8000:127.0.0.1:8000 -L 18000:127.0.0.1:18000 <machine>`.
 - `pais-ssh logout --env <env>` deletes that environment's stored sign-in. The key and the `~/.ssh/config` block stay.
 
-**drai-test Workspaces** started before 2026-11-17 check `~/.ssh/authorized_keys`, so pais-ssh's key is refused
-there ("Permission denied (publickey)").
-
 ## How it decides
 
 - Sign-in: authorisation code flow with PKCE against the tenant's realm in Run:ai's Keycloak, with Run:ai's public
@@ -126,13 +122,13 @@ there ("Permission denied (publickey)").
 
 ## Tested
 
-2026-11-17, Linux, built from source, against `cs-ssh3` and `cs-ssh4` in `exp-ws-ssh` (sshd settings applied by hand on `cs-ssh3`):
+2026-11-17, Linux, built from source, against two Workspaces on drai-test (sshd settings applied by hand on one):
 
 | | Result |
 |---|---|
 | Token refresh from an expired ID token | works |
 | `setup` twice | same block, rest of the file kept |
-| `ssh drai-test.cs-ssh3`, and `.exp-ws-ssh` suffix | works, 0.41 s per connection |
+| `ssh drai-test.<workspace>`, and `.<project>` suffix | works, 0.41 s per connection |
 | rsync 50 MB | up 2.8 to 8.6 s, down 1.1 s, files identical; websocat varied as much (1.7 to 8.9 s up) at the same time |
 | Stopped Workspace | resumed, sshd answering after 15.5 s |
 | Unknown Workspace, wrong project, Workspace without SSH | clear error, ssh exits 255 |
@@ -140,3 +136,7 @@ there ("Permission denied (publickey)").
 
 Not tested: the browser sign-in to the end, macOS, Windows, VS Code Remote-SSH, another person's token refused on
 someone else's Workspace.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE).

@@ -27,7 +27,7 @@ var envs = []env{
 		apiBase: "https://drai-test.runai-mt.test.drai.auckland.ac.nz",
 	},
 	{
-		// ASI dev, tenant auckland. Reachable only on the ASI network (10.60.200.0/24).
+		// The PAIS dev environment, tenant auckland (VPN only).
 		name:    "pais-dev",
 		issuer:  "https://runai.dev.pais.auckland.ac.nz/auth/realms/auckland",
 		apiBase: "https://auckland.runai.dev.pais.auckland.ac.nz",

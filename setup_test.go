@@ -12,15 +12,15 @@ import (
 
 func TestParseHost(t *testing.T) {
 	for _, tc := range []struct{ host, env, name, project string }{
-		{"drai-test.cs-ssh3", "drai-test", "cs-ssh3", ""},
-		{"pais-dev.mp-shell.matt-project", "pais-dev", "mp-shell", "matt-project"},
+		{"drai-test.my-workspace", "drai-test", "my-workspace", ""},
+		{"pais-dev.shared-ws.team-project", "pais-dev", "shared-ws", "team-project"},
 	} {
 		e, name, project, err := parseHost(tc.host)
 		if err != nil || e.name != tc.env || name != tc.name || project != tc.project {
 			t.Errorf("parseHost(%q) = %q %q %q %v", tc.host, e.name, name, project, err)
 		}
 	}
-	for _, host := range []string{"nope.cs-ssh3", "drai-test", "drai-test."} {
+	for _, host := range []string{"nope.my-workspace", "drai-test", "drai-test."} {
 		if _, _, _, err := parseHost(host); err == nil {
 			t.Errorf("parseHost(%q): no error", host)
 		}
@@ -65,7 +65,7 @@ func TestWorkspaceUser(t *testing.T) {
 		case r.Header.Get("Authorization") != "Bearer tok":
 			http.Error(w, "no", http.StatusForbidden)
 		case r.URL.Path == "/p/new/url-templt-4/user":
-			fmt.Fprintln(w, "csco212")
+			fmt.Fprintln(w, "jdoe001")
 		default:
 			http.Error(w, "websocket expected", http.StatusBadRequest) // websocat without the /user page
 		}
@@ -81,8 +81,8 @@ func TestWorkspaceUser(t *testing.T) {
 	if got := workspaceUser("tok", []workload{ws("old", "Running"), ws("new", "Stopped")}); got != "" {
 		t.Errorf("no running Workspace with /user: got %q", got)
 	}
-	if got := workspaceUser("tok", []workload{ws("old", "Running"), ws("new", "Running")}); got != "csco212" {
-		t.Errorf("got %q, want csco212", got)
+	if got := workspaceUser("tok", []workload{ws("old", "Running"), ws("new", "Running")}); got != "jdoe001" {
+		t.Errorf("got %q, want jdoe001", got)
 	}
 	if got := workspaceUser("bad", []workload{ws("new", "Running")}); got != "" {
 		t.Errorf("refused token: got %q", got)
