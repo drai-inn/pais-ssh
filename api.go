@@ -27,16 +27,25 @@ type connection struct {
 	URL  string `json:"url"`
 }
 
-// sshURL is the URL of the Workspace's connection named "SSH..." (the template names it "SSH (client only)").
-func (w workload) sshURL() string {
+// sshURLs gives the URL of the Workspace's connection named "SSH..." (the template names it "SSH (client only)"),
+// with named true. When every connection is named templt-<n> it gives all of them, with named false: the Run:ai UI
+// (3.0.20) loses the names when the template is edited in advanced setup, and the SSH one is then the one whose
+// /user answers (findSSH).
+func (w workload) sshURLs() (urls []string, named bool) {
+	unnamed := true
 	for _, e := range w.Environments {
 		for _, c := range e.Connections {
 			if strings.HasPrefix(c.Name, "SSH") {
-				return c.URL
+				return []string{c.URL}, true
 			}
+			unnamed = unnamed && strings.HasPrefix(c.Name, "templt-")
+			urls = append(urls, c.URL)
 		}
 	}
-	return ""
+	if !unnamed {
+		return nil, false
+	}
+	return urls, false
 }
 
 // workspaces lists the Workspaces you submitted that have an SSH connection, all of them or those named name.
@@ -56,7 +65,7 @@ func workspaces(e env, tok, email, name string) ([]workload, error) {
 	}
 	var ws []workload
 	for _, w := range out.Workloads {
-		if w.sshURL() != "" {
+		if urls, _ := w.sshURLs(); len(urls) > 0 {
 			ws = append(ws, w)
 		}
 	}

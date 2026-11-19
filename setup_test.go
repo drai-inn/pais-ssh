@@ -88,3 +88,53 @@ func TestWorkspaceUser(t *testing.T) {
 		t.Errorf("refused token: got %q", got)
 	}
 }
+
+func TestSSHURLs(t *testing.T) {
+	ws := func(names ...string) workload {
+		var cs []connection
+		for _, n := range names {
+			cs = append(cs, connection{n, "https://x/" + n})
+		}
+		w := workload{}
+		w.Environments = append(w.Environments, struct {
+			Connections []connection `json:"connections"`
+		}{cs})
+		return w
+	}
+	for _, tc := range []struct {
+		w     workload
+		urls  int
+		named bool
+	}{
+		{ws("Terminal", "SSH (client only)"), 1, true},
+		{ws("templt-0", "templt-1", "templt-2"), 3, false},
+		{ws("Terminal", "templt-1"), 0, false},
+		{ws(), 0, false},
+	} {
+		if urls, named := tc.w.sshURLs(); len(urls) != tc.urls || named != tc.named {
+			t.Errorf("%v: got %v %v", tc.w.Environments, urls, named)
+		}
+	}
+}
+
+// Of connections without names, the SSH one is the one whose /user gives a login name; the others give pages.
+func TestFindSSHUnnamed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/p/ws/url-3/user":
+			fmt.Fprintln(w, "<!doctype html><html></html>")
+		case "/p/ws/url-4/user":
+			fmt.Fprintln(w, "jdoe001")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	urls := []string{srv.URL + "/p/ws", srv.URL + "/p/ws/url-3", srv.URL + "/p/ws/url-4"}
+	if u, _ := findSSH("tok", urls, false); u != urls[2] {
+		t.Errorf("got %q, want %q", u, urls[2])
+	}
+	if u, code := findSSH("tok", urls[:2], false); u != "" || code != http.StatusOK {
+		t.Errorf("without the SSH URL: got %q %d", u, code)
+	}
+}

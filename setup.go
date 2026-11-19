@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -78,30 +77,37 @@ var loginName = regexp.MustCompile(`^[a-z_][a-z0-9._-]*$`)
 // start-up serves at <SSH URL>/user through the same owner-only sidecar. The sign-in token can't give it: on some
 // tenants its only name is the email. "" when no Workspace answers.
 func workspaceUser(tok string, ws []workload) string {
-	client := &http.Client{
-		Timeout:       20 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
 	for _, w := range ws {
 		if w.Phase != "Running" {
 			continue
 		}
-		req, err := http.NewRequest(http.MethodGet, strings.TrimSuffix(w.sshURL(), "/")+"/user", nil)
-		if err != nil {
-			continue
-		}
-		req.Header.Set("Authorization", "Bearer "+tok)
-		resp, err := client.Do(req)
-		if err != nil {
-			continue
-		}
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-		resp.Body.Close()
-		if name := strings.TrimSpace(string(b)); resp.StatusCode == http.StatusOK && loginName.MatchString(name) {
-			return name
+		urls, _ := w.sshURLs()
+		for _, u := range urls {
+			if name, _ := askUser(tok, u); name != "" {
+				return name
+			}
 		}
 	}
 	return ""
+}
+
+// askUser gets <u>/user and gives the login name in it ("" if it holds none) and the HTTP status.
+func askUser(tok, u string) (string, int) {
+	req, err := http.NewRequest(http.MethodGet, strings.TrimSuffix(u, "/")+"/user", nil)
+	if err != nil {
+		return "", 0
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := probeClient.Do(req)
+	if err != nil {
+		return "", 0
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+	if name := strings.TrimSpace(string(b)); resp.StatusCode == http.StatusOK && loginName.MatchString(name) {
+		return name, resp.StatusCode
+	}
+	return "", resp.StatusCode
 }
 
 // ensureKey makes the key the first time. It never leaves this machine: sshd in the Workspace accepts any key from
