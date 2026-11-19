@@ -60,8 +60,8 @@ main() {
 	*":$bin_dir:"*) ;;
 	*)
 		case "${SHELL:-}" in
-		*/zsh) rc='~/.zshrc' ;;
-		*/bash) rc='~/.bashrc' ;;
+		*/zsh) rc="$HOME/.zshrc" ;;
+		*/bash) rc="$HOME/.bashrc" ;;
 		*) rc='your shell start-up file' ;;
 		esac
 		echo "$bin_dir is not on your PATH. Add this line to $rc and open a new terminal:"

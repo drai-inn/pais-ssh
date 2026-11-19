@@ -98,7 +98,7 @@ jobs:
           Copy-Item -Recurse srv/releases/latest/download srv/releases/download/v9.9.9
           $s = (Get-Content -Raw install.ps1).Replace('https://github.com/drai-inn/pais-ssh', 'http://127.0.0.1:8080')
           if (([regex]::Matches($s, '127\.0\.0\.1:8080')).Count -ne 1) { throw 'repo URL not replaced once' }
-          Set-Content -NoNewline srv/install.ps1 $s
+          [IO.File]::WriteAllText("$PWD\srv\install.ps1", $s)
           Start-Process python -ArgumentList '-m', 'http.server', '-b', '127.0.0.1', '-d', 'srv', '8080' -WindowStyle Hidden
           Start-Sleep 3
       - name: Latest, as irm | iex
