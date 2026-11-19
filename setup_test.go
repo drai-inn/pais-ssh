@@ -51,6 +51,9 @@ func TestWriteBlockKeepsOtherEnvironments(t *testing.T) {
 			t.Errorf("want %q once in:\n%s", want, got)
 		}
 	}
+	if strings.Count(got, "  ControlPersist no\n") != 2 {
+		t.Errorf("want ControlPersist no in each block:\n%s", got)
+	}
 	if strings.Contains(got, "drai-test.a") {
 		t.Errorf("old drai-test block left behind:\n%s", got)
 	}

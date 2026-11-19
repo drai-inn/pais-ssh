@@ -97,6 +97,9 @@ there ("Permission denied (publickey)").
   sidecar has already checked the token.
 - Host keys are not recorded (`StrictHostKeyChecking no`): the Workspace makes a new one each start, and TLS to the
   cluster already identifies the server.
+- `ControlPersist no`: with `ControlPersist` set (for example in your own `Host *`), ssh sends the ProxyCommand's
+  messages to `/dev/null`, so a failure such as an expired sign-in shows nothing and ssh just exits 255. Sessions
+  still share one connection while the first is open (`ControlMaster`).
 
 ## Tested
 

@@ -169,6 +169,9 @@ func block(e env, exe, user string, hosts []string) string {
 	b.WriteString("  LogLevel ERROR\n")
 	// The gateways close connections idle for 60 s.
 	b.WriteString("  ServerAliveInterval 30\n")
+	// With ControlPersist set (often in a user's "Host *"), ssh sends the ProxyCommand's stderr to /dev/null, which
+	// hides pais-ssh's messages such as "not signed in". Multiplexing within an open session still works.
+	b.WriteString("  ControlPersist no\n")
 	b.WriteString(e.blockEnd() + "\n")
 	return b.String()
 }
